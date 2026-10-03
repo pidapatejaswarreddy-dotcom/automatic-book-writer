@@ -1,0 +1,10 @@
+export const PAGE_OPTIONS = [10, 25, 50, 75, 100, 150, 200];
+export const CHAPTER_OPTIONS = [3, 5, 6, 8, 10, 12, 15, 20];
+export const PAGE_LIMITS = { min: 5, max: 500 };
+export const CHAPTER_LIMITS = { min: 1, max: 40 };
+export const AUDIENCES = ['Children', 'School Students', 'College Students', 'Beginners', 'Intermediate', 'Advanced', 'General Readers', 'Professionals'];
+export const STYLES = ['Simple', 'Professional', 'Academic', 'Conversational', 'Technical', 'Creative', 'Storytelling', 'Formal'];
+export const TONES = ['Friendly', 'Professional', 'Inspirational', 'Serious', 'Neutral', 'Humorous', 'Motivational'];
+export const DIFFICULTIES = ['Beginner', 'Intermediate', 'Advanced'];
+export const STATUSES = ['Draft', 'Outline Ready', 'Generating', 'Generated', 'Editing', 'Completed'];
+export const IMPROVE_ACTIONS = ['improve', 'rewrite', 'expand', 'shorten', 'simplify', 'professional', 'grammar', 'regenerate'];
