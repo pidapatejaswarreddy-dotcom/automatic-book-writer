@@ -1,24 +1,107 @@
-// Shared fetch helper: timeout + retry with backoff. Raw provider errors never reach users.
-export async function postJson(url, headers, body, { timeoutMs = Number(process.env.AI_TIMEOUT_MS) || 120000, retries = Number(process.env.AI_MAX_RETRIES ?? 2) } = {}) {
-  let lastErr;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+export async function postJson(
+  url,
+  options = {},
+  body = {},
+  timeoutMs = 120000
+) {
+  let controller = null;
+  let timer = null;
+
+  try {
+    controller = new AbortController();
+
+    timer = setTimeout(() => {
+      controller.abort();
+    }, timeoutMs);
+
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      ...options,
+      headers,
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+
+    const text = await response.text();
+
+    if (!response.ok) {
+      const error = new Error(
+        `AI provider HTTP ${response.status}: ${text.slice(0, 500)}`
+      );
+
+      error.status = response.status;
+      error.body = text;
+
+      error.retryable =
+        response.status === 408 ||
+        response.status === 409 ||
+        response.status === 425 ||
+        response.status === 429 ||
+        response.status >= 500;
+
+      const retryAfter =
+        response.headers.get('retry-after');
+
+      if (retryAfter) {
+        const seconds = Number(retryAfter);
+
+        if (Number.isFinite(seconds)) {
+          error.retryAfterMs =
+            seconds * 1000;
+        }
+      }
+
+      throw error;
+    }
+
+    if (!text.trim()) {
+      const error = new Error(
+        'AI provider returned an empty response'
+      );
+
+      error.retryable = true;
+
+      throw error;
+    }
+
     try {
-      const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body), signal: ctrl.signal });
-      const text = await res.text();
-      if (res.ok) return JSON.parse(text);
-      const err = new Error(`AI provider HTTP ${res.status}: ${text.slice(0, 300)}`);
-      err.status = res.status; err.retryable = res.status === 429 || res.status >= 500;
-      if (!err.retryable) throw err;
-      lastErr = err;
-    } catch (e) {
-      if (e.name === 'AbortError') { e.code = 'TIMEOUT'; e.retryable = true; }
-      else if (e.retryable === undefined) e.retryable = e instanceof TypeError; // network failure
-      lastErr = e;
-      if (!e.retryable) throw e;
-    } finally { clearTimeout(timer); }
-    if (attempt < retries) await new Promise((r) => setTimeout(r, 800 * 2 ** attempt));
+      return JSON.parse(text);
+    } catch (cause) {
+      const error = new Error(
+        'AI provider returned invalid JSON'
+      );
+
+      error.body = text.slice(0, 500);
+      error.retryable = true;
+      error.cause = cause;
+
+      throw error;
+    }
+
+  } catch (error) {
+
+    if (error?.name === 'AbortError') {
+      const timeoutError = new Error(
+        `AI provider request timed out after ${timeoutMs} ms`
+      );
+
+      timeoutError.code = 'ETIMEDOUT';
+      timeoutError.retryable = true;
+
+      throw timeoutError;
+    }
+
+    throw error;
+
+  } finally {
+
+    if (timer) {
+      clearTimeout(timer);
+    }
   }
-  throw lastErr;
 }
